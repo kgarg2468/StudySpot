@@ -7,6 +7,7 @@ A mobile-first web app for Chapman University students to discover, share, and r
 - Restricted to Chapman students via `@chapman.edu` email.
 - Magic link authentication through Supabase Auth. Student enters email, receives a login link, clicks it, done.
 - Domain restriction enforced server-side — only `@chapman.edu` addresses can request a magic link.
+- On first login, a Supabase database trigger on `auth.users` inserts a corresponding row into `profiles` with `display_name` defaulting to the email prefix.
 
 ## Data Model
 
@@ -49,18 +50,19 @@ One per user per spot. Contains an overall score plus optional attribute breakdo
 | group_friendly | integer 1-5 | no |
 | comment | text | no |
 | created_at | timestamp | auto |
+| updated_at | timestamp | auto (set on update) |
 
-Constraint: unique on (spot_id, user_id) — one rating per user per spot. Users can update their existing rating.
+Constraint: unique on (spot_id, user_id) — one rating per user per spot. Users can update their existing rating. Updates set `updated_at` to the current timestamp; `created_at` stays unchanged.
 
 ### User
 
-Managed by Supabase Auth. Supplemented with a profiles table.
+Managed by Supabase Auth (`auth.users` holds email, id, etc.). Supplemented with a `profiles` table for app-specific data. Email is read from `auth.users` via join — not duplicated in `profiles`.
 
 | Field | Type | Required |
 |-------|------|----------|
 | id | UUID | auto (from Supabase Auth) |
-| email | string | yes (from auth) |
 | display_name | string | no (defaults to email prefix) |
+| is_admin | boolean | auto (default false) |
 | created_at | timestamp | auto |
 
 ### Aggregated Spot Stats
@@ -84,15 +86,17 @@ The default view. A vertically scrollable list of spot cards with a collapsible 
 - **Hidden Gems** — fewer than 5 ratings AND average overall >= 4.0
 - **New** — most recently created spots
 
+**Pagination:** Feed loads 20 spots at a time with a "Load more" button at the bottom (offset-based pagination). Sufficient for v1 scale.
+
 **Mini-map:** Compact Mapbox map showing pins for visible spots. Tapping "Expand" transitions to the full Map View.
 
 **Spot card contents:**
 - Icon (based on category — Lucide icons)
 - Name
 - Overall rating (number + star)
-- Location context (on campus / distance from campus)
+- Location context: "On campus" if within 0.5 miles of Chapman's center (33.7937, -117.8515), otherwise shows distance from campus center (e.g., "0.3 mi away")
 - Key info snippet (hours, discount if present)
-- Attribute tags (top 3-4 most notable attributes as chips)
+- Attribute tags: show chips for the 3-4 attributes with the most ratings on that spot, labeled by their average (e.g., a noise_avg of 1.5 shows "Quiet", 4.5 shows "Loud"). Attributes with zero ratings are omitted.
 
 ### 2. Map View — `/map`
 
@@ -120,11 +124,23 @@ Full scrollable page with sections:
 - Student Discount (if set) — text
 - Indoor/Outdoor (if set) — label
 
-Each rated attribute shows as a bar filled proportionally to the average rating, with a text label (e.g., "Quiet", "Moderate", "Loud" for noise). Only attributes with at least one rating are shown.
+Each rated attribute shows as a bar filled proportionally to the average rating, with a text label. Only attributes with at least one rating are shown.
+
+**Attribute label mapping (same 3-tier scale for all):**
+
+| Attribute | 1.0-2.3 (Low) | 2.4-3.6 (Mid) | 3.7-5.0 (High) |
+|-----------|---------------|----------------|-----------------|
+| Noise | Quiet | Moderate | Loud |
+| Seating | Easy to find | Hit or miss | Hard to find |
+| WiFi | Weak | Decent | Strong |
+| Outlets | Scarce | Some | Plenty |
+| Food/Drink | None nearby | Limited | Great options |
+| Vibe | Minimal | Comfortable | Lively |
+| Group Friendly | Solo only | Small groups OK | Great for groups |
 
 **Recent Ratings:**
 - List of user ratings with display name, star count, optional comment, timestamp
-- Sorted newest first
+- Sorted by most recent activity: `coalesce(updated_at, created_at) desc`
 
 **Actions:**
 - "Rate This Spot" button — opens rating form (or shows existing rating for editing)
@@ -153,7 +169,7 @@ Multi-step form, minimal required fields:
 - Optional attribute ratings (noise, seating, WiFi, outlets, food/drink, vibe, group-friendly)
 - Optional comment
 
-Submit creates the spot and the first rating in one transaction.
+Submit creates the spot and the first rating in one transaction. If a photo was provided in Step 2, it is uploaded to Supabase Storage after the spot is created (using the new `spot_id` as the filename: `{spot_id}.{ext}`), and the spot's `photo_url` is updated with the public URL.
 
 ### 5. Login — `/login`
 
@@ -173,9 +189,12 @@ Lightweight page showing:
 ## Moderation
 
 - Light moderation model: all posts go live immediately.
-- Flag/report button on spots and ratings.
+- Flag/report button on spots (on the detail page) and individual ratings (on each rating row in the Recent Ratings list).
 - Flagged items stored in a `reports` table with reason and reporter.
-- Admin review: a simple `/admin` page (protected, hardcoded admin emails) showing flagged items with approve/remove actions.
+- Admin access is determined by the `is_admin` column in `profiles`. Initial admins are set by manually toggling this column in Supabase dashboard.
+- Admin review: a simple `/admin` page (gated by `is_admin`) showing flagged items with two actions:
+  - **Dismiss** — report was not a real violation. Sets `reports.status` to `reviewed`. Target spot/rating stays live.
+  - **Remove** — report was valid. Deletes the target spot or rating. Sets `reports.status` to `actioned`.
 
 ## Visual Design
 
@@ -214,7 +233,7 @@ Lightweight page showing:
 | Map | Mapbox GL JS | 50k loads/month |
 | Backend/DB | Supabase (Postgres) | 500MB DB, 50k auth users |
 | Auth | Supabase Magic Link | included |
-| Photo Storage | Supabase Storage | 1GB |
+| Photo Storage | Supabase Storage (bucket: `spot-photos`, public) | 1GB |
 | Hosting | Vercel | hobby tier |
 | Geocoding | Mapbox Geocoding API | 100k requests/month |
 
@@ -261,8 +280,23 @@ create table ratings (
   group_friendly integer check (group_friendly between 1 and 5),
   comment text,
   created_at timestamptz default now(),
+  updated_at timestamptz,
   unique(spot_id, user_id)
 );
+
+-- Auto-create profile on first login
+create or replace function handle_new_user()
+returns trigger as $$
+begin
+  insert into profiles (id, display_name)
+  values (new.id, split_part(new.email, '@', 1));
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function handle_new_user();
 
 -- Reports
 create table reports (
@@ -276,18 +310,27 @@ create table reports (
 );
 
 -- Aggregation view for feed performance
+-- Attribute averages are NULL (not 0) when no ratings exist for that attribute.
+-- Per-attribute counts let the UI hide unrated attributes.
 create view spot_stats as
 select
   s.id as spot_id,
   count(r.id) as rating_count,
-  coalesce(avg(r.overall), 0) as overall_avg,
-  coalesce(avg(r.noise_level), 0) as noise_avg,
-  coalesce(avg(r.seating_availability), 0) as seating_avg,
-  coalesce(avg(r.wifi_quality), 0) as wifi_avg,
-  coalesce(avg(r.outlet_availability), 0) as outlet_avg,
-  coalesce(avg(r.food_drink), 0) as food_drink_avg,
-  coalesce(avg(r.vibe), 0) as vibe_avg,
-  coalesce(avg(r.group_friendly), 0) as group_friendly_avg,
+  avg(r.overall) as overall_avg,
+  avg(r.noise_level) as noise_avg,
+  count(r.noise_level) as noise_count,
+  avg(r.seating_availability) as seating_avg,
+  count(r.seating_availability) as seating_count,
+  avg(r.wifi_quality) as wifi_avg,
+  count(r.wifi_quality) as wifi_count,
+  avg(r.outlet_availability) as outlet_avg,
+  count(r.outlet_availability) as outlet_count,
+  avg(r.food_drink) as food_drink_avg,
+  count(r.food_drink) as food_drink_count,
+  avg(r.vibe) as vibe_avg,
+  count(r.vibe) as vibe_count,
+  avg(r.group_friendly) as group_friendly_avg,
+  count(r.group_friendly) as group_friendly_count,
   count(case when r.created_at > now() - interval '7 days' then 1 end) as recent_rating_count
 from spots s
 left join ratings r on r.spot_id = s.id
