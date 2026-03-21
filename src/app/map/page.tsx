@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { createClient } from "@/lib/supabase/client";
+import { fetchSpotsWithStats } from "@/lib/queries";
 import { CHAPMAN_CENTER } from "@/lib/constants";
 import { CategoryIcon } from "@/components/spots/category-icon";
 import { Star, ArrowLeft } from "lucide-react";
@@ -18,11 +19,10 @@ export default function MapPage() {
   const [spots, setSpots] = useState<SpotWithStats[]>([]);
 
   useEffect(() => {
-    const supabase = createClient();
-
     async function loadSpots() {
-      const { data } = await supabase.from("spots").select("*, spot_stats(*)");
-      if (data) setSpots(data as SpotWithStats[]);
+      const supabase = createClient();
+      const data = await fetchSpotsWithStats(supabase);
+      setSpots(data);
     }
 
     loadSpots();

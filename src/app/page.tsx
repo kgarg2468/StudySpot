@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchSpotsWithStats } from "@/lib/queries";
 import { SpotCard } from "@/components/spots/spot-card";
 import { MiniMap } from "@/components/map/mini-map";
 import { FEED_PAGE_SIZE } from "@/lib/constants";
@@ -24,46 +25,21 @@ export default function FeedPage() {
   const [hasMore, setHasMore] = useState(false);
   const [offset, setOffset] = useState(0);
 
-  const supabase = createClient();
-
   const fetchSpots = useCallback(
     async (currentTab: FeedTab, currentOffset: number, append = false) => {
       setLoading(true);
 
-      let query = supabase
-        .from("spots")
-        .select("*, spot_stats(*)")
-        .range(currentOffset, currentOffset + FEED_PAGE_SIZE - 1);
+      const supabase = createClient();
+      const allSpots = await fetchSpotsWithStats(supabase, {
+        offset: currentOffset,
+        limit: FEED_PAGE_SIZE,
+      });
+
+      let filtered = allSpots;
 
       switch (currentTab) {
         case "trending":
-          query = query.order("created_at", { ascending: false });
-          break;
-        case "top":
-          query = query.order("created_at", { ascending: false });
-          break;
-        case "gems":
-          query = query.order("created_at", { ascending: false });
-          break;
-        case "new":
-          query = query.order("created_at", { ascending: false });
-          break;
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error("Error fetching spots:", error);
-        setLoading(false);
-        return;
-      }
-
-      let filtered = (data as SpotWithStats[]) ?? [];
-
-      // Client-side filtering based on tab (stats come from the view)
-      switch (currentTab) {
-        case "trending":
-          filtered = filtered.sort((a, b) => {
+          filtered = [...filtered].sort((a, b) => {
             const aRecent = a.spot_stats?.[0]?.recent_rating_count ?? 0;
             const bRecent = b.spot_stats?.[0]?.recent_rating_count ?? 0;
             return bRecent - aRecent;
@@ -93,7 +69,6 @@ export default function FeedPage() {
             });
           break;
         case "new":
-          // Already sorted by created_at desc
           break;
       }
 
@@ -103,10 +78,10 @@ export default function FeedPage() {
         setSpots(filtered);
       }
 
-      setHasMore((data?.length ?? 0) >= FEED_PAGE_SIZE);
+      setHasMore(allSpots.length >= FEED_PAGE_SIZE);
       setLoading(false);
     },
-    [supabase]
+    []
   );
 
   useEffect(() => {
