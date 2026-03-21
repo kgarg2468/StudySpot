@@ -56,19 +56,8 @@ create table reports (
   created_at timestamptz default now()
 );
 
--- Auto-create profile on first login
-create or replace function handle_new_user()
-returns trigger as $$
-begin
-  insert into profiles (id, display_name)
-  values (new.id, split_part(new.email, '@', 1));
-  return new;
-end;
-$$ language plpgsql security definer;
-
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function handle_new_user();
+-- Profile creation is handled in application code (auth callback + auth context)
+-- to avoid trigger failures blocking user signup.
 
 -- Aggregation view for feed performance
 create view spot_stats as

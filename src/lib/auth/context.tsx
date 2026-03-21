@@ -53,7 +53,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .select("*")
           .eq("id", user.id)
           .single();
-        setProfile(data);
+
+        if (!data) {
+          const { data: created } = await supabase
+            .from("profiles")
+            .upsert(
+              { id: user.id, display_name: user.email?.split("@")[0] ?? "user" },
+              { onConflict: "id" }
+            )
+            .select()
+            .single();
+          setProfile(created);
+        } else {
+          setProfile(data);
+        }
       }
 
       setLoading(false);
@@ -71,7 +84,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .select("*")
           .eq("id", currentUser.id)
           .single();
-        setProfile(data);
+
+        if (!data) {
+          const { data: created } = await supabase
+            .from("profiles")
+            .upsert(
+              { id: currentUser.id, display_name: currentUser.email?.split("@")[0] ?? "user" },
+              { onConflict: "id" }
+            )
+            .select()
+            .single();
+          setProfile(created);
+        } else {
+          setProfile(data);
+        }
       } else {
         setProfile(null);
       }
