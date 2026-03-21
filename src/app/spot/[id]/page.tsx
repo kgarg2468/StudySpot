@@ -17,7 +17,10 @@ import {
   Tag,
   Home,
   Loader2,
+  Pencil,
+  Trash2,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type {
   Spot,
@@ -43,11 +46,13 @@ const ATTRIBUTES = [
 export default function SpotDetailPage({ params }: SpotDetailPageProps) {
   const { id } = use(params);
   const { user } = useAuth();
+  const router = useRouter();
   const [spot, setSpot] = useState<Spot | null>(null);
   const [stats, setStats] = useState<SpotStats | null>(null);
   const [ratings, setRatings] = useState<RatingWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [showRatingForm, setShowRatingForm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [reportTarget, setReportTarget] = useState<{
     type: "spot" | "rating";
     id: string;
@@ -103,9 +108,22 @@ export default function SpotDetailPage({ params }: SpotDetailPageProps) {
 
   const existingRating = ratings.find((r) => r.user_id === user?.id);
 
+  const isOwner = user?.id === spot.created_by;
+
   const openDirections = () => {
     const url = `https://www.google.com/maps/dir/?api=1&destination=${spot.latitude},${spot.longitude}`;
     window.open(url, "_blank");
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(`Delete "${spot.name}"? This will also remove all its ratings and cannot be undone.`)) return;
+    setDeleting(true);
+    const { error } = await supabase.from("spots").delete().eq("id", spot.id);
+    if (!error) {
+      router.push("/profile");
+    } else {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -244,6 +262,27 @@ export default function SpotDetailPage({ params }: SpotDetailPageProps) {
             <Navigation size={14} />
             Directions
           </button>
+          {isOwner && (
+            <Link
+              href={`/spot/${spot.id}/edit`}
+              className="flex items-center gap-2 px-3 py-3 border border-border rounded-xl text-sm text-muted hover:text-primary hover:bg-card transition-colors"
+            >
+              <Pencil size={14} />
+            </Link>
+          )}
+          {isOwner && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="flex items-center gap-2 px-3 py-3 border border-border rounded-xl text-sm text-muted hover:text-red-400 hover:bg-card transition-colors disabled:opacity-50"
+            >
+              {deleting ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Trash2 size={14} />
+              )}
+            </button>
+          )}
           <button
             onClick={() => setReportTarget({ type: "spot", id: spot.id })}
             className="flex items-center gap-2 px-3 py-3 border border-border rounded-xl text-sm text-muted hover:text-primary hover:bg-card transition-colors"

@@ -73,8 +73,8 @@ export default function MapPage() {
   }, [spots]);
 
   return (
-    <div className="fixed inset-0 top-14 bottom-16 z-0">
-      <div ref={mapContainer} className="absolute inset-0" />
+    <div className="fixed inset-x-0 top-14 bottom-16 z-0">
+      <div ref={mapContainer} className="w-full h-full" />
 
       <div className="absolute top-4 left-4 z-10">
         <Link

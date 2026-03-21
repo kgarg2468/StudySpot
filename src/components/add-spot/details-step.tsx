@@ -2,14 +2,16 @@
 
 import { CATEGORY_OPTIONS } from "@/lib/constants";
 import { Camera, X } from "lucide-react";
-import type { SpotFormData } from "@/app/add/page";
+import type { SpotFormData } from "@/lib/types/spot-form";
 
 interface DetailsStepProps {
   form: SpotFormData;
   updateForm: (updates: Partial<SpotFormData>) => void;
+  existingPhotoUrl?: string | null;
+  onClearExistingPhoto?: () => void;
 }
 
-export function DetailsStep({ form, updateForm }: DetailsStepProps) {
+export function DetailsStep({ form, updateForm, existingPhotoUrl, onClearExistingPhoto }: DetailsStepProps) {
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -148,6 +150,31 @@ export function DetailsStep({ form, updateForm }: DetailsStepProps) {
               >
                 <X size={12} />
               </button>
+            </div>
+          ) : existingPhotoUrl ? (
+            <div className="relative inline-block">
+              <img
+                src={existingPhotoUrl}
+                alt="Current photo"
+                className="w-32 h-24 object-cover rounded-xl border border-border"
+              />
+              <button
+                type="button"
+                onClick={onClearExistingPhoto}
+                className="absolute -top-2 -right-2 bg-card border border-border rounded-full p-1 text-muted hover:text-primary"
+              >
+                <X size={12} />
+              </button>
+              <label className="mt-2 flex items-center gap-2 px-3 py-1.5 border border-border rounded-lg cursor-pointer hover:bg-card transition-colors">
+                <Camera size={14} className="text-muted" />
+                <span className="text-xs text-muted">Replace photo</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
+                  className="sr-only"
+                />
+              </label>
             </div>
           ) : (
             <label className="flex items-center gap-2 px-4 py-3 border border-border border-dashed rounded-xl cursor-pointer hover:bg-card transition-colors">

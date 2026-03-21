@@ -1,7 +1,7 @@
 "use client";
 
 import { StarRating } from "@/components/ui/star-rating";
-import type { SpotFormData } from "@/app/add/page";
+import type { SpotFormData } from "@/lib/types/spot-form";
 
 interface RatingStepProps {
   form: SpotFormData;

@@ -31,6 +31,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const handler = (e: PromiseRejectionEvent) => {
+      const msg = e.reason?.message ?? String(e.reason);
+      if (typeof msg === "string" && msg.includes("lock:sb-")) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("unhandledrejection", handler);
+    return () => window.removeEventListener("unhandledrejection", handler);
+  }, []);
+
+  useEffect(() => {
     if (
       !process.env.NEXT_PUBLIC_SUPABASE_URL ||
       !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -41,40 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const supabase = createClient();
 
-    const getSession = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      setUser(user);
-
-      if (user) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .single();
-
-        if (!data) {
-          const { data: created } = await supabase
-            .from("profiles")
-            .upsert(
-              { id: user.id, display_name: user.email?.split("@")[0] ?? "user" },
-              { onConflict: "id" }
-            )
-            .select()
-            .single();
-          setProfile(created);
-        } else {
-          setProfile(data);
-        }
-      }
-
-      setLoading(false);
-    };
-
-    getSession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event: string, session: { user: User | null } | null) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
 

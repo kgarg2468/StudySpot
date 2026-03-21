@@ -5,7 +5,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { CHAPMAN_CENTER } from "@/lib/constants";
 import { Search, MapPin } from "lucide-react";
-import type { SpotFormData } from "@/app/add/page";
+import type { SpotFormData } from "@/lib/types/spot-form";
 
 interface LocationStepProps {
   form: SpotFormData;

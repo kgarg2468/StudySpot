@@ -1,35 +1,75 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/context";
 import { LocationStep } from "@/components/add-spot/location-step";
 import { DetailsStep } from "@/components/add-spot/details-step";
-import { RatingStep } from "@/components/add-spot/rating-step";
 import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 import { INITIAL_FORM } from "@/lib/types/spot-form";
 import type { SpotFormData } from "@/lib/types/spot-form";
-import type { Category } from "@/lib/types/database";
+import type { Spot } from "@/lib/types/database";
+
+interface EditSpotPageProps {
+  params: Promise<{ id: string }>;
+}
 
 const STEPS = [
   { label: "Location", number: 1 },
   { label: "Details", number: 2 },
-  { label: "Rating", number: 3 },
 ];
 
-export default function AddSpotPage() {
+export default function EditSpotPage({ params }: EditSpotPageProps) {
+  const { id } = use(params);
   const { user } = useAuth();
   const router = useRouter();
+  const supabase = createClient();
 
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<SpotFormData>(INITIAL_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [existingPhotoUrl, setExistingPhotoUrl] = useState<string | null>(null);
 
   const updateForm = (updates: Partial<SpotFormData>) => {
     setForm((prev) => ({ ...prev, ...updates }));
   };
+
+  useEffect(() => {
+    if (!user) return;
+
+    async function loadSpot() {
+      const { data: spot } = await supabase
+        .from("spots")
+        .select("*")
+        .eq("id", id)
+        .single<Spot>();
+
+      if (!spot || spot.created_by !== user!.id) {
+        router.push(`/spot/${id}`);
+        return;
+      }
+
+      setForm({
+        ...INITIAL_FORM,
+        latitude: spot.latitude,
+        longitude: spot.longitude,
+        address: spot.address,
+        name: spot.name,
+        category: spot.category,
+        description: spot.description ?? "",
+        hours: spot.hours ?? "",
+        is_indoor: spot.is_indoor,
+        student_discount: spot.student_discount ?? "",
+      });
+      setExistingPhotoUrl(spot.photo_url);
+      setLoading(false);
+    }
+
+    loadSpot();
+  }, [id, user, router, supabase]);
 
   const canProceed = () => {
     switch (step) {
@@ -37,8 +77,6 @@ export default function AddSpotPage() {
         return form.latitude !== null && form.longitude !== null && form.address.trim() !== "";
       case 2:
         return form.name.trim() !== "" && form.category !== "";
-      case 3:
-        return form.overall > 0;
       default:
         return false;
     }
@@ -49,35 +87,31 @@ export default function AddSpotPage() {
     setSubmitting(true);
     setError("");
 
-    const supabase = createClient();
-
     try {
-      const { data: spot, error: spotError } = await supabase
+      const { error: updateError } = await supabase
         .from("spots")
-        .insert({
+        .update({
           name: form.name.trim(),
           description: form.description.trim() || null,
           latitude: form.latitude!,
           longitude: form.longitude!,
           address: form.address.trim(),
-          category: form.category as Category,
+          category: form.category as string,
           hours: form.hours.trim() || null,
           is_indoor: form.is_indoor,
           student_discount: form.student_discount.trim() || null,
-          created_by: user.id,
         })
-        .select("id")
-        .single();
+        .eq("id", id);
 
-      if (spotError || !spot) {
-        setError(spotError?.message ?? "Failed to create spot");
+      if (updateError) {
+        setError(updateError.message);
         setSubmitting(false);
         return;
       }
 
       if (form.photo) {
         const ext = form.photo.name.split(".").pop() ?? "jpg";
-        const filePath = `${spot.id}.${ext}`;
+        const filePath = `${id}.${ext}`;
         const { error: uploadError } = await supabase.storage
           .from("spot-photos")
           .upload(filePath, form.photo, { upsert: true });
@@ -90,44 +124,11 @@ export default function AddSpotPage() {
           await supabase
             .from("spots")
             .update({ photo_url: publicUrl })
-            .eq("id", spot.id);
+            .eq("id", id);
         }
       }
 
-      const ratingData: Record<string, unknown> = {
-        spot_id: spot.id,
-        user_id: user.id,
-        overall: form.overall,
-        comment: form.comment.trim() || null,
-      };
-
-      const optionalFields = [
-        "noise_level",
-        "seating_availability",
-        "wifi_quality",
-        "outlet_availability",
-        "food_drink",
-        "vibe",
-        "group_friendly",
-      ] as const;
-
-      for (const field of optionalFields) {
-        if (form[field] !== null) {
-          ratingData[field] = form[field];
-        }
-      }
-
-      const { error: ratingError } = await supabase
-        .from("ratings")
-        .insert(ratingData as never);
-
-      if (ratingError) {
-        setError(ratingError.message);
-        setSubmitting(false);
-        return;
-      }
-
-      router.push(`/spot/${spot.id}`);
+      router.push(`/spot/${id}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Unexpected error");
       setSubmitting(false);
@@ -138,10 +139,8 @@ export default function AddSpotPage() {
     return (
       <div className="flex-1 flex items-center justify-center px-4 py-16">
         <div className="text-center">
-          <h1 className="text-xl font-extrabold mb-2">Add a Study Spot</h1>
-          <p className="text-secondary text-sm mb-4">
-            Sign in to share your favorite study spots.
-          </p>
+          <h1 className="text-xl font-extrabold mb-2">Edit Spot</h1>
+          <p className="text-secondary text-sm mb-4">Sign in to edit your spots.</p>
           <a
             href="/login"
             className="inline-block bg-primary text-bg font-bold py-2 px-6 rounded-xl text-sm"
@@ -149,6 +148,14 @@ export default function AddSpotPage() {
             Sign in
           </a>
         </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Loader2 size={24} className="animate-spin text-secondary" />
       </div>
     );
   }
@@ -175,14 +182,17 @@ export default function AddSpotPage() {
         ))}
       </div>
 
-      {/* Step content */}
       {step === 1 && <LocationStep form={form} updateForm={updateForm} />}
-      {step === 2 && <DetailsStep form={form} updateForm={updateForm} />}
-      {step === 3 && <RatingStep form={form} updateForm={updateForm} />}
-
-      {error && (
-        <p className="text-sm text-red-400 mt-4">{error}</p>
+      {step === 2 && (
+        <DetailsStep
+          form={form}
+          updateForm={updateForm}
+          existingPhotoUrl={existingPhotoUrl}
+          onClearExistingPhoto={() => setExistingPhotoUrl(null)}
+        />
       )}
+
+      {error && <p className="text-sm text-red-400 mt-4">{error}</p>}
 
       {/* Navigation */}
       <div className="flex gap-3 mt-6">
@@ -196,7 +206,7 @@ export default function AddSpotPage() {
           </button>
         )}
 
-        {step < 3 ? (
+        {step < 2 ? (
           <button
             onClick={() => setStep(step + 1)}
             disabled={!canProceed()}
@@ -214,10 +224,10 @@ export default function AddSpotPage() {
             {submitting ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                Creating...
+                Saving...
               </>
             ) : (
-              "Create Spot"
+              "Save Changes"
             )}
           </button>
         )}

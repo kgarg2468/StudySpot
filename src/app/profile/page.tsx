@@ -14,6 +14,8 @@ import {
   Star,
   Loader2,
   Shield,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import type { Spot, Rating } from "@/lib/types/database";
@@ -29,6 +31,7 @@ export default function ProfilePage() {
   const [mySpots, setMySpots] = useState<Spot[]>([]);
   const [myRatings, setMyRatings] = useState<(Rating & { spots: { name: string } | null })[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingSpotId, setDeletingSpotId] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -80,6 +83,16 @@ export default function ProfilePage() {
   const handleSignOut = async () => {
     await signOut();
     router.push("/login");
+  };
+
+  const handleDeleteSpot = async (spotId: string, spotName: string) => {
+    if (!confirm(`Delete "${spotName}"? This will also remove all its ratings and cannot be undone.`)) return;
+    setDeletingSpotId(spotId);
+    const { error } = await supabase.from("spots").delete().eq("id", spotId);
+    if (!error) {
+      setMySpots((prev) => prev.filter((s) => s.id !== spotId));
+    }
+    setDeletingSpotId(null);
   };
 
   if (authLoading || loading) {
@@ -176,17 +189,40 @@ export default function ProfilePage() {
         ) : (
           <div className="space-y-2">
             {mySpots.map((spot) => (
-              <Link
+              <div
                 key={spot.id}
-                href={`/spot/${spot.id}`}
-                className="flex items-center gap-2 py-2 border-b border-border last:border-0 hover:bg-card-secondary/50 -mx-2 px-2 rounded-lg transition-colors"
+                className="flex items-center gap-2 py-2 border-b border-border last:border-0 -mx-2 px-2 rounded-lg"
               >
-                <MapPin size={14} className="text-muted shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{spot.name}</p>
-                  <p className="text-xs text-muted">{spot.category}</p>
+                <Link
+                  href={`/spot/${spot.id}`}
+                  className="flex items-center gap-2 flex-1 min-w-0 hover:bg-card-secondary/50 rounded-lg transition-colors"
+                >
+                  <MapPin size={14} className="text-muted shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{spot.name}</p>
+                    <p className="text-xs text-muted">{spot.category}</p>
+                  </div>
+                </Link>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Link
+                    href={`/spot/${spot.id}/edit`}
+                    className="p-1.5 text-muted hover:text-primary rounded-lg hover:bg-card-secondary transition-colors"
+                  >
+                    <Pencil size={13} />
+                  </Link>
+                  <button
+                    onClick={() => handleDeleteSpot(spot.id, spot.name)}
+                    disabled={deletingSpotId === spot.id}
+                    className="p-1.5 text-muted hover:text-red-400 rounded-lg hover:bg-card-secondary transition-colors disabled:opacity-50"
+                  >
+                    {deletingSpotId === spot.id ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={13} />
+                    )}
+                  </button>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         )}
