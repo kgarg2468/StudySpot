@@ -73,10 +73,9 @@ export default function MapPage() {
   }, [spots]);
 
   return (
-    <div className="relative h-[calc(100vh-3.5rem-5rem)]">
+    <div className="fixed inset-0 top-14 bottom-16 z-0">
       <div ref={mapContainer} className="absolute inset-0" />
 
-      {/* Back button */}
       <div className="absolute top-4 left-4 z-10">
         <Link
           href="/"
@@ -87,7 +86,6 @@ export default function MapPage() {
         </Link>
       </div>
 
-      {/* Bottom card overlay */}
       {selectedSpot && (
         <div className="absolute bottom-4 left-4 right-4 z-10">
           <Link href={`/spot/${selectedSpot.id}`}>
