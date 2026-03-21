@@ -101,8 +101,9 @@ alter table spots enable row level security;
 alter table ratings enable row level security;
 alter table reports enable row level security;
 
--- Profiles: anyone authenticated can read, only own profile can update
+-- Profiles: anyone authenticated can read, own profile can insert/update
 create policy "profiles_select" on profiles for select to authenticated using (true);
+create policy "profiles_insert" on profiles for insert to authenticated with check (auth.uid() = id);
 create policy "profiles_update" on profiles for update to authenticated using (auth.uid() = id);
 
 -- Spots: authenticated can read and insert, only creator can update/delete
