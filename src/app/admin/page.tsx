@@ -50,7 +50,7 @@ export default function AdminPage() {
 
     if (data) {
       const enriched: ReportWithContext[] = await Promise.all(
-        data.map(async (report) => {
+        data.map(async (report: Report) => {
           const { data: reporter } = await supabase
             .from("profiles")
             .select("display_name")

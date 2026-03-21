@@ -10,7 +10,6 @@ import { Star, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { SpotWithStats, Category } from "@/lib/types/database";
 import { getLocationLabel } from "@/lib/constants";
-import { renderToString } from "react-dom/server";
 
 export default function MapPage() {
   const mapContainer = useRef<HTMLDivElement>(null);

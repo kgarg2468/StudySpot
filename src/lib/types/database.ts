@@ -81,48 +81,157 @@ export interface RatingWithProfile extends Rating {
   profiles: Pick<Profile, "display_name"> | null;
 }
 
-// Supabase client Database type
 export interface Database {
   public: {
     Tables: {
       profiles: {
         Row: Profile;
-        Insert: Partial<Profile> & { id: string };
-        Update: Partial<Profile>;
+        Insert: {
+          id: string;
+          display_name?: string | null;
+          is_admin?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          display_name?: string | null;
+          is_admin?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
       };
       spots: {
         Row: Spot;
-        Insert: Omit<Spot, "id" | "created_at"> & {
+        Insert: {
           id?: string;
+          name: string;
+          description?: string | null;
+          latitude: number;
+          longitude: number;
+          address: string;
+          category: string;
+          hours?: string | null;
+          is_indoor?: boolean | null;
+          student_discount?: string | null;
+          photo_url?: string | null;
+          created_by: string;
           created_at?: string;
         };
-        Update: Partial<Spot>;
+        Update: {
+          id?: string;
+          name?: string;
+          description?: string | null;
+          latitude?: number;
+          longitude?: number;
+          address?: string;
+          category?: string;
+          hours?: string | null;
+          is_indoor?: boolean | null;
+          student_discount?: string | null;
+          photo_url?: string | null;
+          created_by?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "spots_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       ratings: {
         Row: Rating;
-        Insert: Omit<Rating, "id" | "created_at" | "updated_at"> & {
+        Insert: {
           id?: string;
+          spot_id: string;
+          user_id: string;
+          overall: number;
+          noise_level?: number | null;
+          seating_availability?: number | null;
+          wifi_quality?: number | null;
+          outlet_availability?: number | null;
+          food_drink?: number | null;
+          vibe?: number | null;
+          group_friendly?: number | null;
+          comment?: string | null;
           created_at?: string;
-          updated_at?: string;
+          updated_at?: string | null;
         };
-        Update: Partial<Rating>;
+        Update: {
+          id?: string;
+          spot_id?: string;
+          user_id?: string;
+          overall?: number;
+          noise_level?: number | null;
+          seating_availability?: number | null;
+          wifi_quality?: number | null;
+          outlet_availability?: number | null;
+          food_drink?: number | null;
+          vibe?: number | null;
+          group_friendly?: number | null;
+          comment?: string | null;
+          created_at?: string;
+          updated_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ratings_spot_id_fkey";
+            columns: ["spot_id"];
+            isOneToOne: false;
+            referencedRelation: "spots";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ratings_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       reports: {
         Row: Report;
-        Insert: Omit<Report, "id" | "created_at" | "status"> & {
+        Insert: {
           id?: string;
+          target_type: string;
+          target_id: string;
+          reported_by: string;
+          reason: string;
+          status?: string;
           created_at?: string;
-          status?: ReportStatus;
         };
-        Update: Partial<Report>;
+        Update: {
+          id?: string;
+          target_type?: string;
+          target_id?: string;
+          reported_by?: string;
+          reason?: string;
+          status?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "reports_reported_by_fkey";
+            columns: ["reported_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
     };
     Views: {
       spot_stats: {
         Row: SpotStats;
+        Relationships: [];
       };
     };
     Functions: Record<string, never>;
     Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
   };
 }
