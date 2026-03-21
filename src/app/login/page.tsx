@@ -33,7 +33,11 @@ export default function LoginPage() {
 
     if (error) {
       setStatus("error");
-      setErrorMsg(error.message);
+      setErrorMsg(
+        error.message.toLowerCase().includes("database")
+          ? "Something went wrong creating your account. Please try again in a moment."
+          : error.message
+      );
     } else {
       setStatus("sent");
     }
