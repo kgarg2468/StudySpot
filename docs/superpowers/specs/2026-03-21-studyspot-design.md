@@ -153,7 +153,7 @@ Multi-step form, minimal required fields:
 
 **Step 1 — Location:**
 - Search bar (Mapbox Geocoding API) OR tap to drop pin on map
-- Address auto-populated from geocoding result
+- Address auto-populated from geocoding (forward or reverse). If reverse geocoding fails (e.g., pin in an unmapped area), the address field becomes editable so the user can type it manually. Submission is blocked until an address is present.
 
 **Step 2 — Details:**
 - Name (required)
@@ -343,6 +343,8 @@ group by s.id;
 - **ratings:** anyone authenticated can read; only the rating author can update/delete; any authenticated user can insert (with unique constraint enforcing one per spot).
 - **reports:** any authenticated user can insert; only admins can read/update.
 - **profiles:** users can read all profiles; users can only update their own.
+
+**Admin mutations (moderation Remove):** Admin delete operations on spots/ratings bypass user-only RLS by running through Next.js API routes that use the Supabase service-role key (server-side only, never exposed to the client). These routes verify `is_admin` from the user's profile before executing.
 
 ## Out of Scope (v1)
 
