@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchSpotsWithStats } from "@/lib/queries";
 import { SpotCard } from "@/components/spots/spot-card";
@@ -22,64 +22,76 @@ export default function FeedPage() {
   const [tab, setTab] = useState<FeedTab>("trending");
   const [spots, setSpots] = useState<SpotWithStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [offset, setOffset] = useState(0);
+  const requestIdRef = useRef(0);
 
   const fetchSpots = useCallback(
     async (currentTab: FeedTab, currentOffset: number, append = false) => {
+      const requestId = ++requestIdRef.current;
       setLoading(true);
+      setError(null);
 
-      const supabase = createClient();
-      const allSpots = await fetchSpotsWithStats(supabase, {
-        offset: currentOffset,
-        limit: FEED_PAGE_SIZE,
-      });
+      try {
+        const supabase = createClient();
+        const allSpots = await fetchSpotsWithStats(supabase, {
+          offset: currentOffset,
+          limit: FEED_PAGE_SIZE,
+        });
 
-      let filtered = allSpots;
+        let filtered = allSpots;
 
-      switch (currentTab) {
-        case "trending":
-          filtered = [...filtered].sort((a, b) => {
-            const aRecent = a.spot_stats?.[0]?.recent_rating_count ?? 0;
-            const bRecent = b.spot_stats?.[0]?.recent_rating_count ?? 0;
-            return bRecent - aRecent;
-          });
-          break;
-        case "top":
-          filtered = filtered
-            .filter((s) => (s.spot_stats?.[0]?.rating_count ?? 0) >= 3)
-            .sort((a, b) => {
-              const aAvg = a.spot_stats?.[0]?.overall_avg ?? 0;
-              const bAvg = b.spot_stats?.[0]?.overall_avg ?? 0;
-              return bAvg - aAvg;
+        switch (currentTab) {
+          case "trending":
+            filtered = [...filtered].sort((a, b) => {
+              const aRecent = a.spot_stats?.[0]?.recent_rating_count ?? 0;
+              const bRecent = b.spot_stats?.[0]?.recent_rating_count ?? 0;
+              return bRecent - aRecent;
             });
-          break;
-        case "gems":
-          filtered = filtered
-            .filter((s) => {
-              const stats = s.spot_stats?.[0];
-              const count = stats?.rating_count ?? 0;
-              const avg = stats?.overall_avg ?? 0;
-              return count < 5 && avg >= 4.0;
-            })
-            .sort((a, b) => {
-              const aAvg = a.spot_stats?.[0]?.overall_avg ?? 0;
-              const bAvg = b.spot_stats?.[0]?.overall_avg ?? 0;
-              return bAvg - aAvg;
-            });
-          break;
-        case "new":
-          break;
-      }
+            break;
+          case "top":
+            filtered = filtered
+              .filter((s) => (s.spot_stats?.[0]?.rating_count ?? 0) >= 3)
+              .sort((a, b) => {
+                const aAvg = a.spot_stats?.[0]?.overall_avg ?? 0;
+                const bAvg = b.spot_stats?.[0]?.overall_avg ?? 0;
+                return bAvg - aAvg;
+              });
+            break;
+          case "gems":
+            filtered = filtered
+              .filter((s) => {
+                const stats = s.spot_stats?.[0];
+                const count = stats?.rating_count ?? 0;
+                const avg = stats?.overall_avg ?? 0;
+                return count < 5 && avg >= 4.0;
+              })
+              .sort((a, b) => {
+                const aAvg = a.spot_stats?.[0]?.overall_avg ?? 0;
+                const bAvg = b.spot_stats?.[0]?.overall_avg ?? 0;
+                return bAvg - aAvg;
+              });
+            break;
+          case "new":
+            break;
+        }
 
-      if (append) {
-        setSpots((prev) => [...prev, ...filtered]);
-      } else {
-        setSpots(filtered);
-      }
+        if (requestId !== requestIdRef.current) return;
 
-      setHasMore(allSpots.length >= FEED_PAGE_SIZE);
-      setLoading(false);
+        if (append) {
+          setSpots((prev) => [...prev, ...filtered]);
+        } else {
+          setSpots(filtered);
+        }
+        setHasMore(allSpots.length >= FEED_PAGE_SIZE);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load spots");
+      } finally {
+        if (requestId === requestIdRef.current) {
+          setLoading(false);
+        }
+      }
     },
     []
   );
@@ -123,6 +135,11 @@ export default function FeedPage() {
         {loading && spots.length === 0 ? (
           <div className="flex justify-center py-16">
             <Loader2 size={24} className="animate-spin text-secondary" />
+          </div>
+        ) : error ? (
+          <div className="text-center py-16">
+            <p className="text-secondary text-sm">Could not load spots.</p>
+            <p className="text-muted text-xs mt-1">{error}</p>
           </div>
         ) : spots.length === 0 ? (
           <div className="text-center py-16">

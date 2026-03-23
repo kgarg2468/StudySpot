@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useCallback, useEffect, useMemo, useState, use } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/context";
 import { CategoryIcon } from "@/components/spots/category-icon";
@@ -27,7 +27,7 @@ import type {
   SpotStats,
   RatingWithProfile,
 } from "@/lib/types/database";
-import { getLocationLabel, getAttributeLabel } from "@/lib/constants";
+import { getLocationLabel } from "@/lib/constants";
 
 interface SpotDetailPageProps {
   params: Promise<{ id: string }>;
@@ -51,6 +51,7 @@ export default function SpotDetailPage({ params }: SpotDetailPageProps) {
   const [stats, setStats] = useState<SpotStats | null>(null);
   const [ratings, setRatings] = useState<RatingWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showRatingForm, setShowRatingForm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [reportTarget, setReportTarget] = useState<{
@@ -58,31 +59,36 @@ export default function SpotDetailPage({ params }: SpotDetailPageProps) {
     id: string;
   } | null>(null);
 
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async (currentId: string) => {
     setLoading(true);
+    setError(null);
 
-    const [spotRes, statsRes, ratingsRes] = await Promise.all([
-      supabase.from("spots").select("*").eq("id", id).single(),
-      supabase.from("spot_stats").select("*").eq("spot_id", id).single(),
-      supabase
-        .from("ratings")
-        .select("*, profiles(display_name)")
-        .eq("spot_id", id)
-        .order("created_at", { ascending: false }),
-    ]);
+    try {
+      const [spotRes, statsRes, ratingsRes] = await Promise.all([
+        supabase.from("spots").select("*").eq("id", currentId).single(),
+        supabase.from("spot_stats").select("*").eq("spot_id", currentId).single(),
+        supabase
+          .from("ratings")
+          .select("*, profiles(display_name)")
+          .eq("spot_id", currentId)
+          .order("created_at", { ascending: false }),
+      ]);
 
-    if (spotRes.data) setSpot(spotRes.data);
-    if (statsRes.data) setStats(statsRes.data);
-    if (ratingsRes.data) setRatings(ratingsRes.data as RatingWithProfile[]);
-
-    setLoading(false);
-  };
+      if (spotRes.data) setSpot(spotRes.data);
+      if (statsRes.data) setStats(statsRes.data);
+      if (ratingsRes.data) setRatings(ratingsRes.data as RatingWithProfile[]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load spot");
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase]);
 
   useEffect(() => {
-    loadData();
-  }, [id]);
+    loadData(id);
+  }, [id, loadData]);
 
   if (loading) {
     return (
@@ -96,6 +102,7 @@ export default function SpotDetailPage({ params }: SpotDetailPageProps) {
     return (
       <div className="text-center py-16">
         <p className="text-secondary">Spot not found.</p>
+        {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
         <Link href="/" className="text-primary text-sm mt-2 inline-block">
           Back to feed
         </Link>
@@ -299,7 +306,7 @@ export default function SpotDetailPage({ params }: SpotDetailPageProps) {
             onClose={() => setShowRatingForm(false)}
             onSaved={() => {
               setShowRatingForm(false);
-              loadData();
+              loadData(id);
             }}
           />
         )}
