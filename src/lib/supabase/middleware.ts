@@ -3,6 +3,16 @@ import { NextResponse, type NextRequest } from "next/server";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
+  const pathname = request.nextUrl.pathname;
+
+  const publicPaths = new Set(["/login", "/signup"]);
+  if (
+    publicPaths.has(pathname) ||
+    pathname.startsWith("/auth/") ||
+    pathname.startsWith("/api/")
+  ) {
+    return supabaseResponse;
+  }
 
   if (
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
