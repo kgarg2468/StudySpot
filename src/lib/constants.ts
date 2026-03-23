@@ -3,7 +3,7 @@ export const CHAPMAN_CENTER = {
   lng: -117.8515,
 } as const;
 
-export const ON_CAMPUS_RADIUS_MILES = 0.5;
+export const ON_CAMPUS_RADIUS_MILES = 1.0;
 
 export const FEED_PAGE_SIZE = 20;
 
@@ -54,8 +54,12 @@ export function getDistanceFromCampus(lat: number, lng: number): number {
   return R * c;
 }
 
+export function isWithinCampusRadius(lat: number, lng: number): boolean {
+  return getDistanceFromCampus(lat, lng) <= ON_CAMPUS_RADIUS_MILES;
+}
+
 export function getLocationLabel(lat: number, lng: number): string {
   const distance = getDistanceFromCampus(lat, lng);
-  if (distance <= ON_CAMPUS_RADIUS_MILES) return "On campus";
+  if (isWithinCampusRadius(lat, lng)) return "On campus";
   return `${distance.toFixed(1)} mi away`;
 }

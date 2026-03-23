@@ -10,6 +10,11 @@ import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 import { INITIAL_FORM } from "@/lib/types/spot-form";
 import type { SpotFormData } from "@/lib/types/spot-form";
 import type { Spot } from "@/lib/types/database";
+import {
+  ON_CAMPUS_RADIUS_MILES,
+  getDistanceFromCampus,
+  isWithinCampusRadius,
+} from "@/lib/constants";
 
 interface EditSpotPageProps {
   params: Promise<{ id: string }>;
@@ -32,6 +37,14 @@ export default function EditSpotPage({ params }: EditSpotPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [existingPhotoUrl, setExistingPhotoUrl] = useState<string | null>(null);
+  const locationOutsideRadius =
+    form.latitude !== null &&
+    form.longitude !== null &&
+    !isWithinCampusRadius(form.latitude, form.longitude);
+  const distanceFromCampus =
+    form.latitude !== null && form.longitude !== null
+      ? getDistanceFromCampus(form.latitude, form.longitude)
+      : null;
 
   const updateForm = (updates: Partial<SpotFormData>) => {
     setForm((prev) => ({ ...prev, ...updates }));
@@ -213,6 +226,13 @@ export default function EditSpotPage({ params }: EditSpotPageProps) {
       )}
 
       {error && <p className="text-sm text-red-400 mt-4">{error}</p>}
+      {step === 2 && locationOutsideRadius && distanceFromCampus !== null && (
+        <p className="text-xs text-amber-500 mt-4">
+          This spot is {distanceFromCampus.toFixed(1)} miles from Chapman. It is
+          still allowed, but spots within {ON_CAMPUS_RADIUS_MILES} mile are
+          prioritized.
+        </p>
+      )}
 
       {/* Navigation */}
       <div className="flex gap-3 mt-6">
