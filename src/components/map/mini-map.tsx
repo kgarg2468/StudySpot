@@ -15,6 +15,7 @@ interface MiniMapProps {
 export function MiniMap({ spots }: MiniMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
@@ -30,21 +31,35 @@ export function MiniMap({ spots }: MiniMapProps) {
       interactive: false,
     });
 
+    return () => {
+      markersRef.current.forEach((marker) => marker.remove());
+      markersRef.current = [];
+      map.current?.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!map.current) return;
+
+    markersRef.current.forEach((marker) => marker.remove());
+    markersRef.current = [];
+
     spots.forEach((spot) => {
       const el = document.createElement("div");
       el.className =
         "w-7 h-7 bg-white rounded-full border-2 border-black/10 flex items-center justify-center shadow-md cursor-pointer";
       el.innerHTML = `<span class="text-xs">📍</span>`;
 
-      new mapboxgl.Marker({ element: el })
+      const marker = new mapboxgl.Marker({ element: el })
         .setLngLat([spot.longitude, spot.latitude])
         .addTo(map.current!);
+      markersRef.current.push(marker);
     });
-
-    return () => {
-      map.current?.remove();
-    };
   }, [spots]);
+
+  useEffect(() => {
+    map.current?.resize();
+  }, [collapsed]);
 
   return (
     <div className="relative">

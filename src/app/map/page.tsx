@@ -15,17 +15,39 @@ import { getLocationLabel } from "@/lib/constants";
 export default function MapPage() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
   const [selectedSpot, setSelectedSpot] = useState<SpotWithStats | null>(null);
   const [spots, setSpots] = useState<SpotWithStats[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadSpots() {
-      const supabase = createClient();
-      const data = await fetchSpotsWithStats(supabase);
-      setSpots(data);
+      setLoading(true);
+      setError(null);
+      try {
+        const supabase = createClient();
+        const data = await fetchSpotsWithStats(supabase);
+        if (!cancelled) {
+          setSpots(data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load map spots");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     }
 
     loadSpots();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -48,7 +70,10 @@ export default function MapPage() {
   }, []);
 
   useEffect(() => {
-    if (!map.current || spots.length === 0) return;
+    if (!map.current) return;
+
+    markersRef.current.forEach((marker) => marker.remove());
+    markersRef.current = [];
 
     spots.forEach((spot) => {
       const el = document.createElement("div");
@@ -66,9 +91,10 @@ export default function MapPage() {
 
       el.addEventListener("click", () => setSelectedSpot(spot));
 
-      new mapboxgl.Marker({ element: el })
+      const marker = new mapboxgl.Marker({ element: el })
         .setLngLat([spot.longitude, spot.latitude])
         .addTo(map.current!);
+      markersRef.current.push(marker);
     });
   }, [spots]);
 
@@ -85,6 +111,12 @@ export default function MapPage() {
           Feed
         </Link>
       </div>
+
+      {(loading || error) && (
+        <div className="absolute top-4 right-4 z-10 bg-card border border-border rounded-lg px-3 py-2 text-xs">
+          {loading ? "Loading spots..." : `Error: ${error}`}
+        </div>
+      )}
 
       {selectedSpot && (
         <div className="absolute bottom-4 left-4 right-4 z-10">
