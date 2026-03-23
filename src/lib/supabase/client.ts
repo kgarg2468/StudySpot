@@ -1,14 +1,21 @@
 import { createBrowserClient } from "@supabase/ssr";
 
 export function createClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Missing Supabase environment variables");
+  }
+
   return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       auth: {
-        lock: async (_name: string, _acquireTimeout: number, fn: () => Promise<unknown>) => {
-          return fn();
-        },
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
       },
     },
   );

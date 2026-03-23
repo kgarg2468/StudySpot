@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -26,68 +27,118 @@ const AuthContext = createContext<AuthContext>({
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const supabase = useMemo(() => {
+    if (
+      !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ) {
+      return null;
+    }
+    return createClient();
+  }, []);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const handler = (e: PromiseRejectionEvent) => {
-      const msg = e.reason?.message ?? String(e.reason);
-      if (typeof msg === "string" && msg.includes("lock:sb-")) {
-        e.preventDefault();
-      }
-    };
-    window.addEventListener("unhandledrejection", handler);
-    return () => window.removeEventListener("unhandledrejection", handler);
-  }, []);
-
-  useEffect(() => {
-    if (
-      !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    ) {
+    if (!supabase) {
       setLoading(false);
       return;
     }
 
-    const supabase = createClient();
+    let cancelled = false;
+    const bootTimeout = window.setTimeout(() => {
+      if (!cancelled) {
+        setLoading(false);
+      }
+    }, 8000);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
+    async function bootstrapAuth() {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error("Auth bootstrap error:", error);
+        }
+        if (!cancelled) {
+          setUser(data.session?.user ?? null);
+        }
+      } catch (error) {
+        console.error("Auth bootstrap exception:", error);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
 
-      if (currentUser) {
+    bootstrapAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!cancelled) {
+        setUser(session?.user ?? null);
+        if (!session?.user) {
+          setProfile(null);
+        }
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(bootTimeout);
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!supabase || !user) {
+      setProfile(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadProfile() {
+      try {
         const { data } = await supabase
           .from("profiles")
           .select("*")
-          .eq("id", currentUser.id)
+          .eq("id", user.id)
           .single();
 
         if (!data) {
           const { data: created } = await supabase
             .from("profiles")
             .upsert(
-              { id: currentUser.id, display_name: currentUser.email?.split("@")[0] ?? "user" },
+              {
+                id: user.id,
+                display_name: user.email?.split("@")[0] ?? "user",
+              },
               { onConflict: "id" }
             )
             .select()
             .single();
-          setProfile(created);
-        } else {
+          if (!cancelled) {
+            setProfile(created);
+          }
+        } else if (!cancelled) {
           setProfile(data);
         }
-      } else {
-        setProfile(null);
+      } catch (error) {
+        console.error("Profile load error:", error);
       }
+    }
 
-      setLoading(false);
-    });
+    loadProfile();
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, user]);
 
   const signOut = async () => {
-    const supabase = createClient();
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
