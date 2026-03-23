@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useMemo, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/context";
@@ -24,7 +24,7 @@ export default function EditSpotPage({ params }: EditSpotPageProps) {
   const { id } = use(params);
   const { user } = useAuth();
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<SpotFormData>(INITIAL_FORM);
@@ -38,38 +38,58 @@ export default function EditSpotPage({ params }: EditSpotPageProps) {
   };
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
 
     async function loadSpot() {
-      const { data: spot } = await supabase
-        .from("spots")
-        .select("*")
-        .eq("id", id)
-        .single<Spot>();
+      setLoading(true);
+      setError("");
+      try {
+        const { data: spot } = await supabase
+          .from("spots")
+          .select("*")
+          .eq("id", id)
+          .single<Spot>();
 
-      if (!spot || spot.created_by !== user!.id) {
-        router.push(`/spot/${id}`);
-        return;
+        if (!spot || spot.created_by !== user.id) {
+          router.replace(`/spot/${id}`);
+          return;
+        }
+
+        if (cancelled) return;
+        setForm({
+          ...INITIAL_FORM,
+          latitude: spot.latitude,
+          longitude: spot.longitude,
+          address: spot.address,
+          name: spot.name,
+          category: spot.category,
+          description: spot.description ?? "",
+          hours: spot.hours ?? "",
+          is_indoor: spot.is_indoor,
+          student_discount: spot.student_discount ?? "",
+        });
+        setExistingPhotoUrl(spot.photo_url);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load spot");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-
-      setForm({
-        ...INITIAL_FORM,
-        latitude: spot.latitude,
-        longitude: spot.longitude,
-        address: spot.address,
-        name: spot.name,
-        category: spot.category,
-        description: spot.description ?? "",
-        hours: spot.hours ?? "",
-        is_indoor: spot.is_indoor,
-        student_discount: spot.student_discount ?? "",
-      });
-      setExistingPhotoUrl(spot.photo_url);
-      setLoading(false);
     }
 
     loadSpot();
-  }, [id, user, router, supabase]);
+    return () => {
+      cancelled = true;
+    };
+  }, [id, router, supabase, user]);
 
   const canProceed = () => {
     switch (step) {

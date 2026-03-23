@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/context";
-import { StarRating } from "@/components/ui/star-rating";
 import {
   LogOut,
   Edit2,
@@ -23,7 +22,7 @@ import type { Spot, Rating } from "@/lib/types/database";
 export default function ProfilePage() {
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [editingName, setEditingName] = useState(false);
   const [displayName, setDisplayName] = useState("");
@@ -31,41 +30,61 @@ export default function ProfilePage() {
   const [mySpots, setMySpots] = useState<Spot[]>([]);
   const [myRatings, setMyRatings] = useState<(Rating & { spots: { name: string } | null })[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [deletingSpotId, setDeletingSpotId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDisplayName(profile?.display_name ?? "");
+  }, [profile?.display_name]);
 
   useEffect(() => {
     if (authLoading) return;
     if (!user) {
-      router.push("/login");
+      router.replace("/login");
       return;
     }
 
-    setDisplayName(profile?.display_name ?? "");
+    let cancelled = false;
 
     async function loadData() {
-      const [spotsRes, ratingsRes] = await Promise.all([
-        supabase
-          .from("spots")
-          .select("*")
-          .eq("created_by", user!.id)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("ratings")
-          .select("*, spots(name)")
-          .eq("user_id", user!.id)
-          .order("created_at", { ascending: false }),
-      ]);
+      setLoading(true);
+      setError(null);
+      try {
+        const [spotsRes, ratingsRes] = await Promise.all([
+          supabase
+            .from("spots")
+            .select("*")
+            .eq("created_by", user.id)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("ratings")
+            .select("*, spots(name)")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false }),
+        ]);
 
-      if (spotsRes.data) setMySpots(spotsRes.data);
-      if (ratingsRes.data)
-        setMyRatings(
-          ratingsRes.data as (Rating & { spots: { name: string } | null })[]
-        );
-      setLoading(false);
+        if (cancelled) return;
+        if (spotsRes.data) setMySpots(spotsRes.data);
+        if (ratingsRes.data)
+          setMyRatings(
+            ratingsRes.data as (Rating & { spots: { name: string } | null })[]
+          );
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load profile data");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     }
 
     loadData();
-  }, [user, authLoading, profile, router, supabase]);
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, router, supabase, user]);
 
   const handleSaveName = async () => {
     if (!user) return;
@@ -184,6 +203,9 @@ export default function ProfilePage() {
         <h2 className="text-sm font-bold mb-3">
           My Spots ({mySpots.length})
         </h2>
+        {error && (
+          <p className="text-xs text-red-400 mb-3">{error}</p>
+        )}
         {mySpots.length === 0 ? (
           <p className="text-sm text-muted">No spots created yet.</p>
         ) : (
