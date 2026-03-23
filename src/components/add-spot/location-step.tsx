@@ -22,6 +22,40 @@ export function LocationStep({ form, updateForm }: LocationStepProps) {
   >([]);
   const [addressEditable, setAddressEditable] = useState(false);
 
+  function placeMarker(lng: number, lat: number) {
+    if (marker.current) {
+      marker.current.setLngLat([lng, lat]);
+    } else if (map.current) {
+      marker.current = new mapboxgl.Marker()
+        .setLngLat([lng, lat])
+        .addTo(map.current);
+    }
+    updateForm({ latitude: lat, longitude: lng });
+  }
+
+  async function reverseGeocode(lat: number, lng: number) {
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    if (!token) return;
+
+    try {
+      const res = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}`
+      );
+      const data = await res.json();
+
+      if (data.features?.length > 0) {
+        updateForm({ address: data.features[0].place_name });
+        setAddressEditable(false);
+      } else {
+        updateForm({ address: "" });
+        setAddressEditable(true);
+      }
+    } catch {
+      updateForm({ address: "" });
+      setAddressEditable(true);
+    }
+  }
+
   useEffect(() => {
     if (!mapContainer.current || !process.env.NEXT_PUBLIC_MAPBOX_TOKEN) return;
 
@@ -54,40 +88,6 @@ export function LocationStep({ form, updateForm }: LocationStepProps) {
       map.current?.remove();
     };
   }, []);
-
-  const placeMarker = (lng: number, lat: number) => {
-    if (marker.current) {
-      marker.current.setLngLat([lng, lat]);
-    } else if (map.current) {
-      marker.current = new mapboxgl.Marker()
-        .setLngLat([lng, lat])
-        .addTo(map.current);
-    }
-    updateForm({ latitude: lat, longitude: lng });
-  };
-
-  const reverseGeocode = async (lat: number, lng: number) => {
-    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-    if (!token) return;
-
-    try {
-      const res = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}`
-      );
-      const data = await res.json();
-
-      if (data.features?.length > 0) {
-        updateForm({ address: data.features[0].place_name });
-        setAddressEditable(false);
-      } else {
-        updateForm({ address: "" });
-        setAddressEditable(true);
-      }
-    } catch {
-      updateForm({ address: "" });
-      setAddressEditable(true);
-    }
-  };
 
   const handleSearch = async (query: string) => {
     setSearchQuery(query);

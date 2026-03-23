@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/context";
@@ -23,23 +23,13 @@ interface ReportWithContext extends Report {
 export default function AdminPage() {
   const { user, profile, loading: authLoading } = useAuth();
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [reports, setReports] = useState<ReportWithContext[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (authLoading) return;
-    if (!user || !profile?.is_admin) {
-      router.push("/");
-      return;
-    }
-
-    loadReports();
-  }, [user, profile, authLoading, router]);
-
-  const loadReports = async () => {
+  const loadReports = useCallback(async () => {
     setLoading(true);
 
     const { data } = await supabase
@@ -81,7 +71,17 @@ export default function AdminPage() {
     }
 
     setLoading(false);
-  };
+  }, [supabase]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user || !profile?.is_admin) {
+      router.replace("/");
+      return;
+    }
+
+    void Promise.resolve().then(loadReports);
+  }, [user, profile, authLoading, router, loadReports]);
 
   const handleDismiss = async (reportId: string) => {
     setActionLoading(reportId);
