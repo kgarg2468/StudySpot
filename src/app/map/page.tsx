@@ -6,7 +6,6 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { createClient } from "@/lib/supabase/client";
 import { fetchSpotsWithStats } from "@/lib/queries";
 import { CHAPMAN_CENTER } from "@/lib/constants";
-import { addChapmanRadiusOverlay } from "@/lib/map/chapman-radius";
 import { CategoryIcon } from "@/components/spots/category-icon";
 import { Star, ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -60,14 +59,10 @@ export default function MapPage() {
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/light-v11",
       center: [CHAPMAN_CENTER.lng, CHAPMAN_CENTER.lat],
-      zoom: 14,
+      zoom: 14.8,
     });
 
     map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
-    map.current.on("load", () => {
-      if (!map.current) return;
-      addChapmanRadiusOverlay(map.current, "main-map-radius");
-    });
 
     return () => {
       map.current?.remove();

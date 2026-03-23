@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { CHAPMAN_CENTER } from "@/lib/constants";
-import { addChapmanRadiusOverlay } from "@/lib/map/chapman-radius";
 import { ChevronUp, ChevronDown, Expand } from "lucide-react";
 import Link from "next/link";
 import type { SpotWithStats } from "@/lib/types/database";
@@ -28,12 +27,8 @@ export function MiniMap({ spots }: MiniMapProps) {
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/light-v11",
       center: [CHAPMAN_CENTER.lng, CHAPMAN_CENTER.lat],
-      zoom: 14,
+      zoom: 15,
       interactive: false,
-    });
-    map.current.on("load", () => {
-      if (!map.current) return;
-      addChapmanRadiusOverlay(map.current, "mini-map-radius");
     });
 
     return () => {

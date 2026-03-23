@@ -11,7 +11,6 @@ import {
 } from "@/lib/constants";
 import { Search, MapPin } from "lucide-react";
 import type { SpotFormData } from "@/lib/types/spot-form";
-import { addChapmanRadiusOverlay } from "@/lib/map/chapman-radius";
 
 interface LocationStepProps {
   form: SpotFormData;
@@ -24,6 +23,7 @@ export function LocationStep({ form, updateForm }: LocationStepProps) {
     center: [number, number];
     text?: string;
     properties?: { name?: string };
+    source?: "mapbox" | "nominatim";
     distanceMiles: number;
     withinRadius: boolean;
   };
@@ -31,6 +31,7 @@ export function LocationStep({ form, updateForm }: LocationStepProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const marker = useRef<mapboxgl.Marker | null>(null);
+  const searchDebounceRef = useRef<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [addressEditable, setAddressEditable] = useState(false);
@@ -97,11 +98,7 @@ export function LocationStep({ form, updateForm }: LocationStepProps) {
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/light-v11",
       center: initialCenter,
-      zoom: 15,
-    });
-    map.current.on("load", () => {
-      if (!map.current) return;
-      addChapmanRadiusOverlay(map.current, "location-step-radius");
+      zoom: 15.2,
     });
 
     if (form.latitude && form.longitude) {
@@ -122,47 +119,112 @@ export function LocationStep({ form, updateForm }: LocationStepProps) {
     };
   }, []);
 
-  const handleSearch = async (query: string) => {
-    setSearchQuery(query);
-    if (query.length < 3) {
-      setSearchResults([]);
-      return;
-    }
-
+  const runSearch = async (query: string) => {
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     if (!token) return;
+
+    const buildRankedResults = (
+      features: Array<{
+        place_name: string;
+        center: [number, number];
+        text?: string;
+        properties?: { name?: string };
+        source?: "mapbox" | "nominatim";
+      }>
+    ): SearchResult[] =>
+      features
+        .map((feature) => {
+          const [lng, lat] = feature.center;
+          const distanceMiles = getDistanceFromCampus(lat, lng);
+          return {
+            place_name: feature.place_name,
+            center: feature.center,
+            text: feature.text,
+            properties: feature.properties,
+            source: feature.source ?? "mapbox",
+            distanceMiles,
+            withinRadius: distanceMiles <= ON_CAMPUS_RADIUS_MILES,
+          };
+        })
+        .sort((a, b) => a.distanceMiles - b.distanceMiles);
+
+    const fetchFallbackResults = async () => {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 1800);
+      try {
+        const response = await fetch(
+          `/api/geocode/fallback?q=${encodeURIComponent(query)}&limit=5`,
+          { signal: controller.signal }
+        );
+        if (!response.ok) return [];
+        const json = (await response.json()) as {
+          features?: Array<{
+            place_name: string;
+            center: [number, number];
+            text?: string;
+            source?: "nominatim";
+          }>;
+        };
+        return json.features ?? [];
+      } catch {
+        return [];
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    };
 
     try {
       const res = await fetch(
         `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&proximity=${CHAPMAN_CENTER.lng},${CHAPMAN_CENTER.lat}&types=poi,address,place&country=us&limit=10`
       );
       const data = await res.json();
-      const rankedResults: SearchResult[] = (data.features ?? [])
-        .map(
-          (feature: {
-            place_name: string;
-            center: [number, number];
-            text?: string;
-            properties?: { name?: string };
-          }) => {
-            const [lng, lat] = feature.center;
-            const distanceMiles = getDistanceFromCampus(lat, lng);
-            return {
-              place_name: feature.place_name,
-              center: feature.center,
-              text: feature.text,
-              properties: feature.properties,
-              distanceMiles,
-              withinRadius: distanceMiles <= ON_CAMPUS_RADIUS_MILES,
-            };
-          }
-        )
-        .sort((a, b) => a.distanceMiles - b.distanceMiles);
-      setSearchResults(rankedResults);
+      const mapboxFeatures = (data.features ?? []).map(
+        (feature: {
+          place_name: string;
+          center: [number, number];
+          text?: string;
+          properties?: { name?: string };
+        }) => ({ ...feature, source: "mapbox" as const })
+      );
+      const needsFallback = mapboxFeatures.length <= 2;
+      const fallbackFeatures = needsFallback ? await fetchFallbackResults() : [];
+
+      const merged = [...mapboxFeatures, ...fallbackFeatures];
+      const seen = new Set<string>();
+      const deduped = merged.filter((feature) => {
+        const key = feature.place_name.trim().toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      setSearchResults(buildRankedResults(deduped));
     } catch {
       setSearchResults([]);
     }
   };
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (searchDebounceRef.current) {
+      window.clearTimeout(searchDebounceRef.current);
+    }
+    if (query.length < 3) {
+      setSearchResults([]);
+      return;
+    }
+    searchDebounceRef.current = window.setTimeout(() => {
+      void runSearch(query);
+    }, 250);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) {
+        window.clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, []);
 
   const selectSearchResult = (result: SearchResult) => {
     const [lng, lat] = result.center;
