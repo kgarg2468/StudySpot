@@ -7,6 +7,8 @@ import { CHAPMAN_CENTER } from "@/lib/constants";
 import { ChevronUp, ChevronDown, Expand } from "lucide-react";
 import Link from "next/link";
 import type { SpotWithStats } from "@/lib/types/database";
+import { SpotHoverPreview } from "@/components/map/spot-hover-preview";
+import { createSpotMarkerElement } from "@/components/map/marker-utils";
 
 interface MiniMapProps {
   spots: SpotWithStats[];
@@ -17,6 +19,9 @@ export function MiniMap({ spots }: MiniMapProps) {
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const [collapsed, setCollapsed] = useState(false);
+  const [hoveredSpot, setHoveredSpot] = useState<SpotWithStats | null>(null);
+  const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!mapContainer.current || !process.env.NEXT_PUBLIC_MAPBOX_TOKEN) return;
@@ -45,16 +50,35 @@ export function MiniMap({ spots }: MiniMapProps) {
     markersRef.current = [];
 
     spots.forEach((spot) => {
-      const el = document.createElement("div");
-      el.className =
-        "w-7 h-7 bg-white rounded-full border-2 border-black/10 flex items-center justify-center shadow-md cursor-pointer";
-      el.innerHTML = `<span class="text-xs">📍</span>`;
+      const el = createSpotMarkerElement(spot.category);
+
+      el.addEventListener("mouseenter", () => {
+        if (hoverTimeoutRef.current) {
+          clearTimeout(hoverTimeoutRef.current);
+          hoverTimeoutRef.current = null;
+        }
+        const rect = el.getBoundingClientRect();
+        setHoverPosition({ x: rect.left + rect.width / 2, y: rect.top });
+        setHoveredSpot(spot);
+      });
+
+      el.addEventListener("mouseleave", () => {
+        hoverTimeoutRef.current = setTimeout(() => {
+          setHoveredSpot(null);
+        }, 90);
+      });
 
       const marker = new mapboxgl.Marker({ element: el })
         .setLngLat([spot.longitude, spot.latitude])
         .addTo(map.current!);
       markersRef.current.push(marker);
     });
+
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
   }, [spots]);
 
   useEffect(() => {
@@ -63,6 +87,7 @@ export function MiniMap({ spots }: MiniMapProps) {
 
   return (
     <div className="relative">
+      {hoveredSpot && <SpotHoverPreview spot={hoveredSpot} position={hoverPosition} />}
       <div
         className={`transition-all duration-300 overflow-hidden ${
           collapsed ? "h-0" : "h-40"

@@ -9,17 +9,22 @@ import { CHAPMAN_CENTER } from "@/lib/constants";
 import { CategoryIcon } from "@/components/spots/category-icon";
 import { Star, ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import type { SpotWithStats, Category } from "@/lib/types/database";
+import type { SpotWithStats } from "@/lib/types/database";
 import { getLocationLabel } from "@/lib/constants";
+import { SpotHoverPreview } from "@/components/map/spot-hover-preview";
+import { createSpotMarkerElement } from "@/components/map/marker-utils";
 
 export default function MapPage() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const [selectedSpot, setSelectedSpot] = useState<SpotWithStats | null>(null);
+  const [hoveredSpot, setHoveredSpot] = useState<SpotWithStats | null>(null);
+  const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
   const [spots, setSpots] = useState<SpotWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,18 +81,23 @@ export default function MapPage() {
     markersRef.current = [];
 
     spots.forEach((spot) => {
-      const el = document.createElement("div");
-      el.className =
-        "w-8 h-8 bg-white rounded-full border-2 border-black/10 flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform";
+      const el = createSpotMarkerElement(spot.category);
 
-      const iconMap: Record<Category, string> = {
-        Library: "📚",
-        Cafe: "☕",
-        Outdoor: "🌳",
-        Building: "🏢",
-        Other: "📍",
-      };
-      el.innerHTML = `<span class="text-sm">${iconMap[spot.category] ?? "📍"}</span>`;
+      el.addEventListener("mouseenter", () => {
+        if (hoverTimeoutRef.current) {
+          clearTimeout(hoverTimeoutRef.current);
+          hoverTimeoutRef.current = null;
+        }
+        const rect = el.getBoundingClientRect();
+        setHoverPosition({ x: rect.left + rect.width / 2, y: rect.top });
+        setHoveredSpot(spot);
+      });
+
+      el.addEventListener("mouseleave", () => {
+        hoverTimeoutRef.current = setTimeout(() => {
+          setHoveredSpot(null);
+        }, 90);
+      });
 
       el.addEventListener("click", () => setSelectedSpot(spot));
 
@@ -96,6 +106,11 @@ export default function MapPage() {
         .addTo(map.current!);
       markersRef.current.push(marker);
     });
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
   }, [spots]);
 
   return (
@@ -117,6 +132,8 @@ export default function MapPage() {
           {loading ? "Loading spots..." : `Error: ${error}`}
         </div>
       )}
+
+      {hoveredSpot && <SpotHoverPreview spot={hoveredSpot} position={hoverPosition} />}
 
       {selectedSpot && (
         <div className="absolute bottom-4 left-4 right-4 z-10">
